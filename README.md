@@ -24,7 +24,7 @@ The chain ID is `onyx-1` and its RPC endpoint is `https://rpc.onyx.testnets.gno.
 2. A reader uses `Submit` to give the location, describe the error, and suggest a correction. Reports are public and permanent on-chain. The chain records the block height and assigns a submission ID.
 3. The owner decides what to accept. An earlier pending report at the same trimmed, case-sensitive location must be resolved before a later one can be accepted. `MarkDuplicate` can link to an earlier pending or accepted report in the same book.
 4. An accepted report from a different address on a book with a positive reward qualifies for credit and payment. Self-owned and zero-reward reports appear separately as unpaid credits. The finder page shows amounts paid and owed.
-5. If funds fall short, the reward is recorded as owed. Funding pays the oldest accepted reward once it is covered. Sponsor balances are used in address order before owner deposits. Large queues can take multiple calls to `SettleOwed`, which anyone can use to continue payouts.
+5. If funds fall short, the reward is recorded as owed. Funding pays rewards in acceptance order once the oldest owed reward is covered. Sponsor balances are used in address order before owner deposits. Large queues or rewards funded by many sponsors can take multiple calls to `SettleOwed`, which anyone can use to continue payouts.
 6. The owner can withdraw only their own deposits after owed rewards settle. Closing a book pauses new submissions and acceptances. The owner can still fund existing debts and reject or mark reports as duplicates. Once debts settle on a closed book, each sponsor can claim its remaining funds with `RefundSponsor`. The owner can reopen the book after remaining sponsor balances are cleared.
 
 One GNOT equals 1,000,000 ugnot. The book page shows owner funds, locked sponsor funds, and amounts owed. A reward depends on owner acceptance and funding. Chain fees and storage deposits are separate from these funds.
@@ -95,7 +95,7 @@ Fetch the public package dependencies from Onyx and run the format check, lint, 
 scripts/test.sh
 ```
 
-To run an individual suite, enter one of `gno/p/errata`, `gno/r/erratabank`, or `gno/r/erratademo` and run `gno fmt -diff ./...`, `gno lint ./...`, and `gno test ./...`. Run `gno test -run '_filetest.gno' .` in `gno/r/erratabank` for the escrow filetests alone.
+To run an individual suite, enter its module directory and run `gno fmt -diff .`, `gno lint .`, and `gno test .`. The test script covers the shared v0 library and both versions of each realm. Run `gno test -run '_filetest.gno' .` in `gno/r/erratabank/v1` for the v1 balance filetests.
 
 If the release binaries still cannot resolve dependencies, build the tools from the extracted source with Go 1.25 or later.
 
@@ -104,59 +104,63 @@ If the release binaries still cannot resolve dependencies, build the tools from 
 scripts/test.sh
 ```
 
-Start a loopback-only chain with all three modules using the original development namespace.
+Start a loopback-only chain with the shared library and both v1 realms.
 
 ```bash
 gnodev local -home '' -unsafe-api=false \
   -add-account g1jg8mtutu9khhfwc4nxmuhcpftf0pajdhfvsqf5 \
-  ./gno/p/errata ./gno/r/erratabank ./gno/r/erratademo
+  ./gno/p/errata ./gno/r/erratabank/v1 ./gno/r/erratademo/v1
 ```
 
-The `-home ''` flag skips the local keybase. The example address is public and belongs only to this local walkthrough. Open the [Erratabank home](http://localhost:8888/r/g1jg8mtutu9khhfwc4nxmuhcpftf0pajdhfvsqf5/erratabank/v0) and [Quickstart realm](http://localhost:8888/r/g1jg8mtutu9khhfwc4nxmuhcpftf0pajdhfvsqf5/erratademo/v0). The local chain ID is `dev` and its RPC endpoint is `http://localhost:26657`. [Gno installation](https://docs.gno.land/builders/install), [gnodev reference](https://docs.gno.land/resources/gnodev)
+The `-home ''` flag skips the local keybase. The example account belongs only to this local walkthrough. Open the [v1 Erratabank home](http://localhost:8888/r/g132vz03ycpaagtef4jmxjakstkppgyc5wn3r807/erratabank/v1) and [v1 Quickstart realm](http://localhost:8888/r/g132vz03ycpaagtef4jmxjakstkppgyc5wn3r807/erratademo/v1). The local chain ID is `dev` and its RPC endpoint is `http://localhost:26657`. [Gno installation](https://docs.gno.land/builders/install), [gnodev reference](https://docs.gno.land/resources/gnodev)
 
 ## Set up your Onyx keys
 
 1. Install the pinned tools using the command above.
-2. In your own Terminal, create separate owner and reader keys.
+2. In your own Terminal, create separate keys for any missing v1 demo roles.
 
    ```bash
    gnokey add erratabank-owner
+   gnokey add erratabank-sponsor
    gnokey add erratabank-reader
+   gnokey add erratabank-reader-2
    ```
 
    Write each 24-word mnemonic down offline. **Never share your mnemonic.** Keep mnemonics, passwords, private keys, and keybase files out of Codex, chat, and project files.
-3. Run `gnokey list` and copy the two public `g1…` addresses. If sharing setup information with Codex, provide only the public owner address.
-4. Fund both public addresses. Select the current testnet and confirm it is Onyx. [Testnet faucet](https://faucet.gno.land)
-5. Confirm a positive Onyx balance for each address.
+3. Run `gnokey list` to find the public `g1…` addresses for the four roles. If sharing setup information with Codex, provide only the public owner address.
+4. Fund the four public addresses. Select the current testnet and confirm it is Onyx. [Testnet faucet](https://faucet.gno.land)
+5. Confirm a positive Onyx balance for each address. Substitute each role's public address in the query.
 
    ```bash
-   owner_addr='YOUR_PUBLIC_OWNER_G1_ADDRESS'
-   reader_addr='YOUR_PUBLIC_READER_G1_ADDRESS'
-   gnokey query -remote https://rpc.onyx.testnets.gno.land:443 "bank/balances/$owner_addr"
-   gnokey query -remote https://rpc.onyx.testnets.gno.land:443 "bank/balances/$reader_addr"
+   addr='PUBLIC_G1_ADDRESS'
+   gnokey query -remote https://rpc.onyx.testnets.gno.land:443 "bank/balances/$addr"
    ```
 
 ## Deploy and record the demo
 
-After funding, run these commands in your own Terminal from the project directory.
+The v1 realms need separate GPAS approval in this order. The published `p/g132vz03ycpaagtef4jmxjakstkppgyc5wn3r807/errata/v0` library is reused.
+
+1. Submit `gno.land/r/g132vz03ycpaagtef4jmxjakstkppgyc5wn3r807/erratabank/v1` and wait for GPAS activation.
+2. Submit `gno.land/r/g132vz03ycpaagtef4jmxjakstkppgyc5wn3r807/erratademo/v1` after the bank is live, then wait for its activation.
+
+From the project directory, run the tests. Use `set-namespace.sh "$owner_addr"` only if you will deploy the v1 realms from a different owner address. It tests and rewrites only the two v1 realms, including their imports and tests.
 
 ```bash
-scripts/set-namespace.sh "$owner_addr"
 scripts/test.sh
-scripts/deploy-onyx.sh
 ```
 
-`set-namespace.sh` validates the public address, rewrites the module paths and imports in a staging copy, and tests all three modules before applying the changes. `deploy-onyx.sh` checks the local owner key's public address and its Onyx balance, then skips packages already live. For the next package, open the printed GPAS link. Type `submit` only if no submission is awaiting approval. The script simulates the deployment, shows the estimated gas, and pauses before the signed transaction. After broadcasting, it prints the same GPAS link and exits.
+Once signing is authorized, run `scripts/deploy-onyx.sh --simulate-only` to size the next package submission. The simulation requires the owner to sign and exits before broadcast.
 
-Rerun the deploy script after each package goes live. The order is `errata`, `erratabank`, then `erratademo`. The `erratabank` realm can only be approved after the `errata` package is live because the realm imports it. If the chain requests a CLA, use the Onyx CLA page. You can set `MAX_DEPLOY_DEPOSIT` or `MAX_CALL_DEPOSIT` to a positive ugnot cap if simulation indicates a larger storage deposit. [Package approval status](https://gpas.latest.testnets.gno.land), [Onyx CLA](https://onyx.testnets.gno.land/r/sys/cla), [Storage deposits](https://docs.gno.land/resources/storage-deposit)
+Once broadcast is authorized, run `scripts/deploy-onyx.sh` in your Terminal. It checks the owner address and balance, skips live packages, and stops on a pending submission. Open the printed GPAS link and type `submit` only if the package has no pending submission. The script simulates the next package, pauses before broadcast, and exits after broadcasting that one package. Rerun it after the bank is live to submit the demo. Use `MAX_DEPLOY_DEPOSIT` or `MAX_CALL_DEPOSIT` if simulation calls for a higher storage cap. [Package approval status](https://gpas.latest.testnets.gno.land), [Onyx CLA](https://onyx.testnets.gno.land/r/sys/cla), [Storage deposits](https://docs.gno.land/resources/storage-deposit)
 
-Once all three packages are live, query an existing book or use the rehearsal script on a fresh deployment with an unlinked guide. The guide can be linked once.
+After both v1 realms are live and demo broadcasts are authorized, run the demo. Replace the example ID below with the book ID printed by the script.
 
 ```bash
+scripts/demo-onyx.sh
 scripts/query-onyx.sh 1
 ```
 
-`query-onyx.sh` uses read-only `qrender` and `qeval`. The [recording script](docs/DEMO_SCRIPT.md) describes the expanded rehearsal in `scripts/demo-onyx.sh`.
+`query-onyx.sh` uses read-only `qrender` and `qeval`. The [v1 recording script](docs/DEMO_SCRIPT.md) follows the actual sponsor, finder, duplicate, top-up, withdrawal, and integration calls.
 
 ### Verified Onyx demo, 24 Nov 2026
 

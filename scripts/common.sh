@@ -7,7 +7,9 @@ ONYX_WEB=https://onyx.testnets.gno.land
 ONYX_CHAIN=onyx-1
 OWNER_KEY=erratabank-owner
 READER_KEY=erratabank-reader
-PACKAGES=(gno/p/errata gno/r/erratabank gno/r/erratademo)
+SPONSOR_KEY=erratabank-sponsor
+SECOND_READER_KEY=erratabank-reader-2
+V1_PACKAGES=(gno/r/erratabank/v1 gno/r/erratademo/v1)
 
 die() {
   printf '%s\n' "$*" >&2
@@ -53,16 +55,19 @@ valid_address() {
 }
 
 load_modules() {
+  local library_namespace
   ERRATA_PATH=$(module_path gno/p/errata)
-  BANK_PATH=$(module_path gno/r/erratabank)
-  DEMO_PATH=$(module_path gno/r/erratademo)
+  BANK_PATH=$(module_path "${V1_PACKAGES[0]}")
+  DEMO_PATH=$(module_path "${V1_PACKAGES[1]}")
   NAMESPACE=${BANK_PATH#gno.land/r/}
   NAMESPACE=${NAMESPACE%%/*}
-  if ! valid_address "$NAMESPACE" ||
-    [[ $ERRATA_PATH != "gno.land/p/$NAMESPACE/errata/v0" ||
-       $BANK_PATH != "gno.land/r/$NAMESPACE/erratabank/v0" ||
-       $DEMO_PATH != "gno.land/r/$NAMESPACE/erratademo/v0" ]]; then
-    die 'The three gnomod.toml files must share a valid address namespace.'
+  library_namespace=${ERRATA_PATH#gno.land/p/}
+  library_namespace=${library_namespace%%/*}
+  if ! valid_address "$NAMESPACE" || ! valid_address "$library_namespace" ||
+    [[ $ERRATA_PATH != "gno.land/p/$library_namespace/errata/v0" ||
+       $BANK_PATH != "gno.land/r/$NAMESPACE/erratabank/v1" ||
+       $DEMO_PATH != "gno.land/r/$NAMESPACE/erratademo/v1" ]]; then
+    die 'Expected an existing errata/v0 library and two v1 realms sharing their address namespace.'
   fi
 }
 

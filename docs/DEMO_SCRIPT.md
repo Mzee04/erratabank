@@ -1,15 +1,17 @@
-# Erratabank demo
+# Erratabank v1 demo
+
+Use this walkthrough with `scripts/demo-onyx.sh` on a fresh, unlinked v1 deployment. The script uses four funded testnet accounts for the owner, sponsor, first reader, and second reader. Capture the result of each call after the Terminal prompt closes.
 
 | Time | Show | Say |
 | --- | --- | --- |
-| 0:00–0:15 | Start on the Erratabank book list. | “Errata get scattered across inboxes and issue trackers, making it hard to tell who found an error first.” |
-| 0:15–0:35 | Open the Quickstart book on gnoweb and point to its reward and escrow. | “This book offers one GNOT for an accepted correction, with three GNOT in escrow.” |
-| 0:35–1:05 | Use the reader key and Submit via Actions or gnokey, then open Pending. | “I report the section, describe the mistake, and suggest three backticks for the fenced code block.” |
-| 1:05–1:30 | Show the owner's Accept call and refresh the book. | “The owner accepts the first report, and the correction appears on the public book page.” |
-| 1:30–1:55 | Open the finder account and show the reader's before-and-after balances. | “The finder gets public credit and one GNOT, and the book escrow drops from three to two GNOT.” |
-| 1:55–2:15 | Open the later report after MarkDuplicate and follow its link to the original. | “The later report points to the original, and only the first report earns credit.” |
-| 2:15–2:40 | Open the linked Quickstart realm and scroll to Errata. | “The guide imports the same Errata section, so its readers see the accepted correction here too.” |
-| 2:40–2:55 | Show the owner's recorded Withdraw call and the updated book. | “The owner withdraws half a GNOT of unused escrow, leaving one and a half GNOT available.” |
-| 2:55–3:00 | End on the book's accepted correction. | “Thanks for watching.” |
+| 0:00–0:20 | Create the Quickstart book and open its gnoweb page. | “The owner sets a reward of one GNOT per eligible correction and deposits a quarter GNOT of owner funds.” |
+| 0:20–0:35 | Fund the book with the sponsor account. | “The sponsor adds one GNOT, which the book labels as locked sponsor funds.” |
+| 0:35–0:55 | Submit the two Section 1 corrections from separate reader accounts. | “The first reader reports the missing backtick. A second reader reports the same location afterward.” |
+| 0:55–1:20 | Accept the first report and open that reader's finder page. | “The owner accepts the first report. The finder receives one GNOT from the sponsor balance.” |
+| 1:20–1:35 | Mark the later report as a duplicate and follow its link. | “The later report points to the first finder’s accepted correction.” |
+| 1:35–2:00 | Use the second reader to submit the Section 2 correction. Accept it and open the finder page. | “The second reader finds a separate issue in Section 2. The owner accepts it. The book is short on funds, so one GNOT is recorded as owed.” |
+| 2:00–2:20 | Top up 1.1 GNOT with the sponsor account and refresh the finder and book pages. | “The sponsor tops up one point one GNOT. The owed reward is paid first, leaving a tenth of a GNOT in locked sponsor funds.” |
+| 2:20–2:40 | Withdraw the owner’s 0.25 GNOT and show both book balances. | “The owner takes back their quarter GNOT of unreserved deposits. The tenth GNOT from the sponsor stays locked.” |
+| 2:40–3:00 | Link the guide and show both accepted corrections under Errata. | “The Quickstart guide shows both accepted corrections through the paged integration API. Thanks for watching.” |
 
-Record the Withdraw call as `scripts/demo-onyx.sh` runs, then place that clip after the Quickstart realm clip in the video. Avoid capturing any key setup or password entry.
+The [recorded Onyx v0 demo](../README.md#verified-onyx-demo-24-nov-2026) documents the earlier four-transaction run.

@@ -26,5 +26,6 @@ if [[ -n $book_id ]]; then
 fi
 if [[ -n $finder ]]; then
   qrender "$BANK_PATH" "finder/$finder"
+  qrender "$BANK_PATH" "finder/$finder/unpaid"
   gnokey query -remote "$ONYX_RPC" -data "$BANK_PATH.FinderStats(address(\"$finder\"))" vm/qeval
 fi

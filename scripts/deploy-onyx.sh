@@ -2,7 +2,8 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
-[[ $# -eq 0 ]] || die "Usage: $0"
+[[ $# -eq 0 || ( $# -eq 1 && $1 == --simulate-only ) ]] || die "Usage: $0 [--simulate-only]"
+simulate_only=${1:-}
 terminal_only
 require_onyx_namespace
 owner_addr=$(key_address "$OWNER_KEY")
@@ -53,6 +54,11 @@ deploy() {
   if [[ -n $suggested_fee ]] && ((suggested_fee > fee)); then
     fee=$suggested_fee
   fi
+  if [[ $simulate_only == --simulate-only ]]; then
+    printf '\nSimulation complete for %s. Gas limit %s, fee %sugnot, storage cap %s.\n' \
+      "$path" "$gas" "$fee" "$deposit_cap"
+    exit 0
+  fi
   pause_step "Deploy $path with gas limit $gas, fee ${fee}ugnot, and storage cap $deposit_cap."
   gnokey maketx addpkg "${args[@]}" -gas-wanted "$gas" -gas-fee "${fee}ugnot" \
     -simulate test "$OWNER_KEY"
@@ -61,7 +67,8 @@ deploy() {
   exit 0
 }
 
-deploy "$ERRATA_PATH" "${PACKAGES[0]}"
-deploy "$BANK_PATH" "${PACKAGES[1]}"
-deploy "$DEMO_PATH" "${PACKAGES[2]}"
+query_files "$ERRATA_PATH" >/dev/null ||
+  die "The existing library must be live before submitting the v1 realms: $ERRATA_PATH"
+deploy "$BANK_PATH" "${V1_PACKAGES[0]}"
+deploy "$DEMO_PATH" "${V1_PACKAGES[1]}"
 "$PROJECT_ROOT/scripts/query-onyx.sh"

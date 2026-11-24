@@ -6,12 +6,21 @@ source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 terminal_only
 require_onyx_namespace
 owner_addr=$(key_address "$OWNER_KEY")
-reader_addr=$(key_address "$READER_KEY")
 [[ $owner_addr == "$NAMESPACE" ]] || die "Local key $OWNER_KEY must match $NAMESPACE."
-valid_address "$reader_addr" && [[ $reader_addr != "$owner_addr" ]] ||
-  die "A separate funded $READER_KEY key is required."
-require_funded "$owner_addr"
-require_funded "$reader_addr"
+demo_addresses=("$owner_addr")
+for key in "$SPONSOR_KEY" "$READER_KEY" "$SECOND_READER_KEY"; do
+  addr=$(key_address "$key")
+  valid_address "$addr" || die "A funded $key key is required."
+  for existing in "${demo_addresses[@]}"; do
+    [[ $addr != "$existing" ]] || die 'The owner, sponsor, and readers must use separate demo addresses.'
+  done
+  demo_addresses+=("$addr")
+done
+reader_addr=${demo_addresses[2]}
+second_reader_addr=${demo_addresses[3]}
+for addr in "${demo_addresses[@]}"; do
+  require_funded "$addr"
+done
 
 # Read the one-time integration setting before creating a demo book.
 demo_status=$(gnokey query -remote "$ONYX_RPC" -data "$DEMO_PATH.BookID()" vm/qeval)
@@ -48,53 +57,73 @@ read_tx_id() {
     die 'The transaction succeeded, but its returned ID could not be read. Inspect the output above.'
 }
 
-pause_step 'Owner registers Erratabank Quickstart with a 1 GNOT reward and 3 GNOT of escrow.'
-call "$OWNER_KEY" "$BANK_PATH" CreateBook 3000000ugnot \
+show_book() {
+  web_url "$BANK_PATH" "book/$book_id"
+  gnokey query -remote "$ONYX_RPC" -data "$BANK_PATH:book/$book_id" vm/qrender
+}
+
+show_finder() {
+  web_url "$BANK_PATH" "finder/$1"
+  gnokey query -remote "$ONYX_RPC" -data "$BANK_PATH:finder/$1" vm/qrender
+}
+
+pause_step 'Owner registers Quickstart with a 1 GNOT reward and deposits 0.25 GNOT of owner funds.'
+call "$OWNER_KEY" "$BANK_PATH" CreateBook 250000ugnot \
   'Erratabank Quickstart' 'First edition' "$(web_url "$DEMO_PATH")" 1000000
 read_tx_id
 book_id=$last_id
-web_url "$BANK_PATH" "book/$book_id"
+show_book
 
-pause_step 'Reader submits the first correction.'
-call "$READER_KEY" "$BANK_PATH" Submit '' "$book_id" 'Section 1, first example' \
-  'The example says to use two backticks. Use three backticks to open a code block.'
+pause_step 'Sponsor deposits 1 GNOT in locked sponsor funds.'
+call "$SPONSOR_KEY" "$BANK_PATH" FundBook 1000000ugnot "$book_id"
+show_book
+
+location='Section 1. Formatting examples'
+pause_step 'Reader submits the first correction at the Markdown example.'
+call "$READER_KEY" "$BANK_PATH" Submit '' "$book_id" "$location" \
+  'The guide says to use two backticks. Use three backticks on their own line to open a fenced code block.'
 read_tx_id
 first_id=$last_id
 web_url "$BANK_PATH" "erratum/$first_id"
 
-pause_step 'Reader submits a separate editorial suggestion.'
-call "$READER_KEY" "$BANK_PATH" Submit '' "$book_id" 'Section 2, heading' \
-  'Rename the heading to Additional Notes.'
-read_tx_id
-other_id=$last_id
-web_url "$BANK_PATH" "erratum/$other_id"
-
-pause_step 'Reader submits a later report for the first correction.'
-call "$READER_KEY" "$BANK_PATH" Submit '' "$book_id" 'Section 1, first example' \
-  'A fenced block needs three backticks.'
+pause_step 'The second reader reports the same location.'
+call "$SECOND_READER_KEY" "$BANK_PATH" Submit '' "$book_id" "$location" \
+  'The fenced block example needs a third opening backtick.'
 read_tx_id
 duplicate_id=$last_id
-web_url "$BANK_PATH" "erratum/$duplicate_id"
+web_url "$BANK_PATH" "book/$book_id/pending"
 
-pause_step 'Owner accepts the first report. Compare the reader balance and the book escrow.'
-require_funded "$reader_addr"
+pause_step 'Owner accepts the first report and the finder receives the 1 GNOT sponsor reward.'
 call "$OWNER_KEY" "$BANK_PATH" Accept '' "$first_id" 'Confirmed against the Markdown example.'
-web_url "$BANK_PATH" "finder/$reader_addr"
-web_url "$BANK_PATH" "book/$book_id"
-require_funded "$reader_addr"
+show_finder "$reader_addr"
+show_book
 
-pause_step 'Owner marks the later report as a duplicate of the first.'
+pause_step 'Owner marks the second report as a duplicate of the first.'
 call "$OWNER_KEY" "$BANK_PATH" MarkDuplicate '' "$duplicate_id" "$first_id"
 web_url "$BANK_PATH" "erratum/$duplicate_id"
 
-pause_step 'Owner rejects the editorial suggestion.'
-call "$OWNER_KEY" "$BANK_PATH" Reject '' "$other_id" 'The current heading is intentional.'
-web_url "$BANK_PATH" "erratum/$other_id"
+pause_step 'The second reader submits a distinct correction in Section 2.'
+call "$SECOND_READER_KEY" "$BANK_PATH" Submit '' "$book_id" 'Section 2. Notes' \
+  'The note only asks for expected output. Include observed output as well so maintainers can reproduce a mismatch.'
+read_tx_id
+owed_id=$last_id
+web_url "$BANK_PATH" "erratum/$owed_id"
 
-pause_step 'Owner withdraws 0.5 GNOT of unused escrow.'
-call "$OWNER_KEY" "$BANK_PATH" Withdraw '' "$book_id" 500000
-web_url "$BANK_PATH" "book/$book_id"
+pause_step 'Owner accepts the Section 2 correction. Available funds fall short, so the finder is owed 1 GNOT.'
+call "$OWNER_KEY" "$BANK_PATH" Accept '' "$owed_id" 'Confirmed. Include both observed and expected output.'
+show_finder "$second_reader_addr"
+show_book
 
-pause_step 'Deployer links the Quickstart realm to the book.'
+pause_step 'Sponsor tops up 1.1 GNOT. The 1 GNOT debt is paid first, leaving 0.1 GNOT in locked sponsor funds.'
+call "$SPONSOR_KEY" "$BANK_PATH" FundBook 1100000ugnot "$book_id"
+show_finder "$second_reader_addr"
+show_book
+
+pause_step 'Owner withdraws their 0.25 GNOT of unreserved deposits. The 0.1 GNOT sponsor balance stays locked.'
+call "$OWNER_KEY" "$BANK_PATH" Withdraw '' "$book_id" 250000
+show_book
+
+pause_step 'Deployer links the v1 Quickstart guide to the book so it shows both accepted corrections.'
 call "$OWNER_KEY" "$DEMO_PATH" SetBook '' "$book_id"
 web_url "$DEMO_PATH"
+gnokey query -remote "$ONYX_RPC" -data "$DEMO_PATH:" vm/qrender
