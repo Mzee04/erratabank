@@ -1,12 +1,14 @@
 # Erratabank
 
-Publish an on-chain errata page that credits the first finder and can pay a reward automatically.
+Publish an on-chain errata page where maintainers review corrections, credit finders, and can fund rewards.
 
 Errata for books and technical material often end up scattered across issue trackers, emails, and personal sites. That makes it hard to settle who found a mistake first or take credit for a correction from one publication to another. Erratabank gives authors, course makers, and documentation maintainers a public review queue. Every reader gets a finder page with a history of accepted corrections across books. Knuth's reward checks inspired the optional rewards.
 
 Erratabank was started on 23 Nov 2026 for the Gnome Tavern hackathon. Nothing existed before that date.
 
 ## Onyx deployment
+
+The links and recorded transactions below describe the live v0 deployment. The v1 realms are prepared locally.
 
 | Component | Onyx |
 | --- | --- |
@@ -16,29 +18,38 @@ Erratabank was started on 23 Nov 2026 for the Gnome Tavern hackathon. Nothing ex
 
 The chain ID is `onyx-1` and its RPC endpoint is `https://rpc.onyx.testnets.gno.land:443`. The hackathon submission closes on 18 Dec 2026 at 01:00 UTC (02:00 Africa/Lagos). It requires a working testnet deployment, a public repository, a README, and a demo video. [Gnome Tavern hackathon](https://dorahacks.io/hackathon/gnome-tavern/detail)
 
-## How it works
+## How v1 works
 
-1. A maintainer calls `CreateBook` with a title, edition, source link, and reward in ugnot. The caller owns that book. Creation can include an initial send, and anyone can add escrow later with `FundBook`.
-2. A reader uses `Submit` to give the location, describe the error, and suggest a correction. The chain records its block height. Increasing submission IDs establish the order within a block.
-3. The owner reviews reports in submission order. `Accept` credits the finder. `Reject` can record a short reason. Use `MarkDuplicate` to link a pending report to an earlier accepted report in the same book. Accept the original first. A duplicate gets no credit or payout. The owner judges whether reports describe the same error.
-4. When a book carries a reward and has enough escrow, `Accept` pays the full reward in the same transaction. With reward zero or insufficient escrow, acceptance still grants credit and records `Paid=0`. Later funding applies to future acceptances only. Unpaid credits have no automatic retroactive payout.
-5. The owner can withdraw unused escrow and close or reopen submissions. Closing a book leaves its existing reports available for review. Book ownership stays with the creating caller.
+1. A maintainer calls `CreateBook` with a title, edition, source link, and reward in ugnot. The caller owns that book. An initial send and later sends from the owner count as owner funds. Other callers use `FundBook` to add locked sponsor funds.
+2. A reader uses `Submit` to give the location, describe the error, and suggest a correction. Reports are public and permanent on-chain. The chain records the block height and assigns a submission ID.
+3. The owner decides what to accept. An earlier pending report at the same trimmed, case-sensitive location must be resolved before a later one can be accepted. `MarkDuplicate` can link to an earlier pending or accepted report in the same book.
+4. An accepted report from a different address on a book with a positive reward qualifies for credit and payment. Self-owned and zero-reward reports appear separately as unpaid credits. The finder page shows amounts paid and owed.
+5. If funds fall short, the reward is recorded as owed. Funding pays the oldest accepted reward once it is covered. Sponsor balances are used in address order before owner deposits. Large queues can take multiple calls to `SettleOwed`, which anyone can use to continue payouts.
+6. The owner can withdraw only their own deposits after owed rewards settle. Closing a book pauses new submissions and acceptances. The owner can still fund existing debts and reject or mark reports as duplicates. Once debts settle on a closed book, each sponsor can claim its remaining funds with `RefundSponsor`. The owner can reopen the book after remaining sponsor balances are cleared.
 
-One GNOT equals 1,000,000 ugnot. The book page displays the reward and available escrow. The finder page displays the accepted reports and exactly how much the realm paid in total. Chain fees and storage deposits are separate from book escrow.
+One GNOT equals 1,000,000 ugnot. The book page shows owner funds, locked sponsor funds, and amounts owed. A reward depends on owner acceptance and funding. Chain fees and storage deposits are separate from these funds.
+
+## Review findings addressed
+
+- Separated owner and sponsor funds, directed later deposits to owed rewards in acceptance order, and gave sponsors a refund path on closed books.
+- Enforced first-finder order per location and separated unpaid credits from reward-eligible credits.
+- Assigned IDs from dedicated counters and capped public list queries at 50. Integrations use `AcceptedEntriesPage`.
+- Kept rejected correction text in **All reports** and added the public, permanent submission notice.
 
 ## Use as an author or reader
 
 Open the Erratabank realm in gnoweb and choose **Actions** to find the Adena call forms and matching `gnokey` commands.
 
-- **Authors** use `CreateBook`, then open the book link on the home page. Use the **Pending** list for report IDs and review the earliest valid report first. Use `FundBook` with a positive ugnot send to top up rewards, `SetBookOpen` to control intake, and `Withdraw` to recover unused escrow.
-- **Readers** open the book to check accepted and pending reports. Use `Submit` with the book ID, a precise location, and the proposed fix. Follow the finder link on an accepted report to see your public account page.
+- **Authors** use `CreateBook`, then open the book link on the home page. Use the **Pending** list for report IDs and review the earliest report at each location first. Use `FundBook` with a positive ugnot send to top up rewards, `SetBookOpen` to control intake, and `Withdraw` to recover unreserved owner deposits.
+- **Readers** open the book to check accepted and pending reports. Use `Submit` with the book ID, a precise location, and the proposed fix. Follow the finder link on an accepted report to see your public account page. Open **All reports** to read rejected corrections.
+- **Sponsors** use `FundBook` to add locked funds for accepted finders. Use `SponsorBalance` to check your remaining contribution and `RefundSponsor` to claim it once the owner closes the book and owed rewards settle.
 
 For example, after deployment, submit to book 1 with a funded reader key. Replace `YOUR_PUBLIC_G1_ADDRESS` with the owner namespace and adjust the book ID.
 
 ```bash
 owner_addr='YOUR_PUBLIC_G1_ADDRESS'
 gnokey maketx call \
-  -pkgpath "gno.land/r/$owner_addr/erratabank/v0" -func Submit \
+  -pkgpath "gno.land/r/$owner_addr/erratabank/v1" -func Submit \
   -args 1 -args 'p. 42, line 3' -args 'Says O(n log n). The loop is O(n^2).' \
   -gas-fee 20000ugnot -gas-wanted 20000000 -max-deposit 5000000ugnot \
   -chainid onyx-1 -remote https://rpc.onyx.testnets.gno.land:443 \
@@ -54,16 +65,16 @@ Import the pure `errata` package to render your own entries. For accepted report
 ```go
 import (
     "gno.land/p/<addr>/errata/v0"
-    "gno.land/r/<addr>/erratabank/v0"
+    "gno.land/r/<addr>/erratabank/v1"
 )
 
 func Render(path string) string {
-    entries := erratabank.AcceptedEntries(1)
+    entries := erratabank.AcceptedEntriesPage(1, 0, 20)
     return "# My documentation\n\n" + errata.RenderSection("Errata", entries)
 }
 ```
 
-For larger lists, use `AcceptedEntriesPage(bookID, offset, limit)`. The Quickstart demo shows a documentation article with an intentional error and a live errata section. The demo deployer can connect it to a book once with `SetBook`.
+Use `AcceptedEntriesPage(bookID, offset, limit)` to page through accepted reports. The limit is capped at 50. `AcceptedEntries` returns the first 50. The Quickstart demo shows a documentation article with an intentional error and a live errata section. The demo deployer can connect it to a book once with `SetBook`.
 
 ## Local development
 

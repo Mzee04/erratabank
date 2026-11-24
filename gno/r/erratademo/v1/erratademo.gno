@@ -55,8 +55,8 @@ func Render(path string) string {
 
 func renderGuide(w *mux.ResponseWriter, req *mux.Request) {
 	w.Write("# Erratabank Quickstart\n\n")
-	w.Write("To report an error, give the page or section, explain what is wrong, and suggest a correction.\n\n")
-	w.Write("The maintainer reviews submissions on Erratabank. Accepted corrections appear here automatically.\n\n")
+	w.Write("To report an error, give the page or section, explain what is wrong, and suggest a correction. Reports are public and permanent on-chain.\n\n")
+	w.Write("The maintainer decides which reports to accept. Accepted corrections appear here automatically, with any rewards paid so far.\n\n")
 	w.Write("## Section 1. Formatting examples\n\nOpen a fenced code block with two backticks on their own line.\n\n")
 	w.Write("## Section 2. Notes\n\nInclude the expected output when a correction changes an example.\n\n")
 	if bookID == 0 {

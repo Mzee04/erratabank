@@ -251,7 +251,7 @@ func CreateBook(cur realm, title, edition, link string, rewardPerErratum int64) 
 	return id
 }
 
-// Submit records a report. Increasing IDs break ties within a block.
+// Submit records a report. Reports are public and permanent on-chain.
 func Submit(cur realm, bookID int, location, text string) int {
 	finder := callerAddress(cur)
 	rejectCoins(cur)

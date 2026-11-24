@@ -89,7 +89,7 @@ func renderHome(w *mux.ResponseWriter, req *mux.Request) {
 	}
 	w.Write("# Erratabank\n\n")
 	w.Write("Erratabank is a public errata page for books, courses, and technical docs.\n\n")
-	w.Write("Each accepted correction credits its finder. Authors can escrow a reward for accepted reports.\n\n")
+	w.Write("Book owners decide which reports to accept. Owner deposits and locked sponsor funds can cover rewards for eligible reports.\n\n")
 	w.Write("Use the Actions tab to register a book, submit a correction, or review reports for a book you own.\n\n")
 	w.Write("## Books\n\n")
 	if books.Size() == 0 {
@@ -134,14 +134,14 @@ func renderBook(w *mux.ResponseWriter, req *mux.Request) {
 	if book.Open {
 		state = "Open"
 	}
-	w.Write(ufmt.Sprintf("# %s\n\n- Edition: %s\n- Owner: %s\n- Submissions: %s\n- Reward per erratum: %s\n- Owner funds: %s\n- Sponsor funds: %s\n- Owed: %s\n- Owner funds available to withdraw: %s\n",
+	w.Write(ufmt.Sprintf("# %s\n\n- Edition: %s\n- Owner: %s\n- Submissions: %s\n- Reward per erratum: %s\n- Owner funds: %s\n- Sponsor funds: %s (locked)\n- Owed: %s\n- Owner funds available to withdraw: %s\n",
 		sanitize.InlineText(book.Title), sanitize.InlineText(book.Edition), sanitize.InlineCode(book.Owner.String()),
 		state, errata.FormatUgnot(book.RewardPerErratum), errata.FormatUgnot(book.OwnerFunds),
 		errata.FormatUgnot(book.SponsorFunds), errata.FormatUgnot(book.Owed), errata.FormatUgnot(record.ownerWithdrawable())))
 	if url := sanitize.URL(book.Link); url != "" {
 		w.Write("- [Read the book](" + url + ")\n")
 	}
-	w.Write("\n")
+	w.Write("\nThe owner decides which reports to accept. Eligible rewards are paid from book funds when available or recorded as owed.\n\n")
 	w.Write(errata.RenderSection("Accepted errata", AcceptedEntriesPage(book.ID, offset, pageSize)))
 	pagination(w, bookRoute(book.ID), offset, record.accepted.Size())
 	w.Write(ufmt.Sprintf("\n[Pending (%d)](%s/pending) · [All reports (%d)](%s/all) · Rejected: %d · Duplicates: %d · [All books](%s)\n",
@@ -175,11 +175,25 @@ func renderReportList(w *mux.ResponseWriter, req *mux.Request, status, heading, 
 		w.Write("No reports here yet.\n")
 		return
 	}
-	w.Write("| Report | Location | Status | Finder | Height found |\n| --- | --- | --- | --- | ---: |\n")
+	header := "| Report | Location | Status | Finder | Height found |"
+	dividers := "| --- | --- | --- | --- | ---: |"
+	if status == "" {
+		header += " Correction |"
+		dividers += " --- |"
+	}
+	w.Write(header + "\n" + dividers + "\n")
 	for _, report := range listReports(tree, offset, pageSize) {
-		w.Write(ufmt.Sprintf("| [#%d](%s) | %s | %s | [%s](%s) | %d |\n",
+		w.Write(ufmt.Sprintf("| [#%d](%s) | %s | %s | [%s](%s) | %d |",
 			report.ID, erratumURL(report.ID), sanitize.TableCell(report.Location), report.Status,
 			errata.ShortAddr(report.Finder.String()), finderURL(report.Finder), report.SubmittedAt))
+		if status == "" {
+			w.Write(" " + sanitize.TableCell(report.Text))
+			if report.Status == Rejected && report.Note != "" {
+				w.Write(" — " + sanitize.TableCell(report.Note))
+			}
+			w.Write(" |")
+		}
+		w.Write("\n")
 	}
 	pagination(w, bookRoute(book.ID)+suffix, offset, tree.Size())
 }
@@ -194,14 +208,19 @@ func renderErratum(w *mux.ResponseWriter, req *mux.Request) {
 	book, _ := GetBook(report.BookID)
 	w.Write(ufmt.Sprintf("# Erratum #%d\n\n[Back to %s](%s)\n\n",
 		id, sanitize.InlineText(book.Title), bookURL(book.ID)))
-	w.Write(ufmt.Sprintf("- Location: %s\n- Finder: [%s](%s)\n- Status: %s\n- Paid: %s\n\n## Correction\n\n%s\n\n",
+	w.Write(ufmt.Sprintf("- Location: %s\n- Finder: [%s](%s)\n- Status: %s\n- Paid: %s\n- Owed: %s\n\n",
 		sanitize.InlineText(report.Location), report.Finder.String(), finderURL(report.Finder),
-		report.Status, errata.FormatUgnot(report.Paid), sanitize.InlineText(report.Text)))
+		report.Status, errata.FormatUgnot(report.Paid), errata.FormatUgnot(report.Owed)))
+	if report.Status == Rejected {
+		w.Write("[View the rejected correction in All reports](" + bookURL(book.ID) + "/all)\n\n")
+	} else {
+		w.Write("## Correction\n\n" + sanitize.InlineText(report.Text) + "\n\n")
+	}
 	w.Write(ufmt.Sprintf("## Status history\n\n- Height %d — Pending (submitted)\n", report.SubmittedAt))
 	if report.Status != Pending {
 		w.Write(ufmt.Sprintf("- Height %d — %s\n", report.ReviewedAt, report.Status))
 	}
-	if report.Note != "" {
+	if report.Note != "" && report.Status != Rejected {
 		w.Write("- Review note: " + sanitize.InlineText(report.Note) + "\n")
 	}
 	if report.DuplicateOf != 0 {
