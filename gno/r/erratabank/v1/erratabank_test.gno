@@ -218,3 +218,16 @@ func TestModeratedRendering(cur realm, t *testing.T) {
 		t.Fatalf("all reports should escape and show the rejected correction: %s", all)
 	}
 }
+
+func TestPublicReportNoticeOnHomeAndBook(cur realm, t *testing.T) {
+	const notice = "Reports are public and permanent on-chain."
+	testing.SetRealm(testing.NewUserRealm(testOwner))
+	book := CreateBook(cross(cur), "Public report notice", "First edition", testLink, 0)
+
+	if !strings.Contains(Render(""), notice+"\n\nUse the Actions tab") {
+		t.Error("home page must show the notice directly before the report instructions")
+	}
+	if !strings.Contains(Render("book/"+strconv.Itoa(book)), notice+"\n\n[Pending (") {
+		t.Error("book page must show the notice directly before the pending report link")
+	}
+}

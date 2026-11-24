@@ -12,6 +12,7 @@ import (
 )
 
 const pageSize = 20
+const reportNotice = "Reports are public and permanent on-chain."
 
 var router = mux.NewRouter()
 
@@ -90,6 +91,7 @@ func renderHome(w *mux.ResponseWriter, req *mux.Request) {
 	w.Write("# Erratabank\n\n")
 	w.Write("Erratabank is a public errata page for books, courses, and technical docs.\n\n")
 	w.Write("Book owners decide which reports to accept. Owner deposits and locked sponsor funds can cover rewards for eligible reports.\n\n")
+	w.Write(reportNotice + "\n\n")
 	w.Write("Use the Actions tab to register a book, submit a correction, or review reports for a book you own.\n\n")
 	w.Write("## Books\n\n")
 	if books.Size() == 0 {
@@ -144,7 +146,8 @@ func renderBook(w *mux.ResponseWriter, req *mux.Request) {
 	w.Write("\nThe owner decides which reports to accept. Eligible rewards are paid from book funds when available or recorded as owed.\n\n")
 	w.Write(errata.RenderSection("Accepted errata", AcceptedEntriesPage(book.ID, offset, pageSize)))
 	pagination(w, bookRoute(book.ID), offset, record.accepted.Size())
-	w.Write(ufmt.Sprintf("\n[Pending (%d)](%s/pending) · [All reports (%d)](%s/all) · Rejected: %d · Duplicates: %d · [All books](%s)\n",
+	w.Write("\n" + reportNotice + "\n\n")
+	w.Write(ufmt.Sprintf("[Pending (%d)](%s/pending) · [All reports (%d)](%s/all) · Rejected: %d · Duplicates: %d · [All books](%s)\n",
 		record.pending.Size(), bookURL(book.ID), record.all.Size(), bookURL(book.ID),
 		record.rejected.Size(), record.duplicate.Size(), realmURL))
 }
