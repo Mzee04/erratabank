@@ -62,6 +62,7 @@ type bookRecord struct {
 	accepted    avl.Tree
 	rejected    avl.Tree
 	duplicate   avl.Tree
+	byLocation  avl.Tree
 	sponsors    avl.Tree
 	owedReports avl.Tree
 	nextOwedID  int
@@ -84,9 +85,17 @@ func (record *bookRecord) reports(status string) *avl.Tree {
 }
 
 type finderRecord struct {
-	paid int64
-	owed int64
-	ids  avl.Tree
+	paid    int64
+	owed    int64
+	credits avl.Tree
+	unpaid  avl.Tree
+}
+
+type FinderSummary struct {
+	Credits       int
+	UnpaidCredits int
+	Paid          int64
+	Owed          int64
 }
 
 var (
@@ -238,9 +247,6 @@ func Submit(cur realm, bookID int, location, text string) int {
 	if !record.book.Open {
 		panic(errClosed)
 	}
-	if finder == record.book.Owner {
-		panic(errSelfSubmit)
-	}
 	location = requiredText("location", location, 120)
 	text = requiredText("text", text, 1000)
 	nextErratumID++
@@ -252,6 +258,12 @@ func Submit(cur realm, bookID int, location, text string) int {
 	})
 	record.all.Set(key, id)
 	record.pending.Set(key, id)
+	atLocation, _ := record.byLocation.Get(location).(*avl.Tree)
+	if atLocation == nil {
+		atLocation = avl.NewTree()
+		record.byLocation.Set(location, atLocation)
+	}
+	atLocation.Set(key, id)
 	chain.Emit("ErratumSubmitted", "book", strconv.Itoa(bookID), "erratum", strconv.Itoa(id),
 		"finder", finder.String())
 	return id
@@ -260,6 +272,11 @@ func Submit(cur realm, bookID int, location, text string) int {
 func review(record *bookRecord, report *Erratum, status, note string) {
 	key := idKey(report.ID)
 	record.pending.Remove(key)
+	atLocation := record.byLocation.Get(report.Location).(*avl.Tree)
+	atLocation.Remove(key)
+	if atLocation.Size() == 0 {
+		record.byLocation.Remove(report.Location)
+	}
 	record.reports(status).Set(key, report.ID)
 	report.Status = status
 	report.ReviewedAt = runtime.ChainHeight()
@@ -274,6 +291,11 @@ func Accept(cur realm, erratumID int, note string) {
 	if !record.book.Open {
 		panic(errClosedAccept)
 	}
+	atLocation := record.byLocation.Get(report.Location).(*avl.Tree)
+	_, first := atLocation.GetByIndex(0)
+	if first.(int) != report.ID {
+		panic(errEarlierPending)
+	}
 	review(record, report, Accepted, reviewNote(note))
 
 	addr := report.Finder.String()
@@ -282,10 +304,13 @@ func Accept(cur realm, erratumID int, note string) {
 		finder = &finderRecord{}
 		finders.Set(addr, finder)
 	}
-	finder.ids.Set(idKey(erratumID), erratumID)
-	if reward := record.book.RewardPerErratum; reward > 0 {
+	key := idKey(erratumID)
+	if reward := record.book.RewardPerErratum; reward > 0 && report.Finder != owner {
+		finder.credits.Set(key, erratumID)
 		record.queueReward(report, finder, reward)
 		settleRewards(cur, record)
+	} else {
+		finder.unpaid.Set(key, erratumID)
 	}
 	chain.Emit("ErratumAccepted", "book", strconv.Itoa(report.BookID), "erratum", strconv.Itoa(erratumID),
 		"finder", addr, "paid", strconv.FormatInt(report.Paid, 10), "owed", strconv.FormatInt(report.Owed, 10))
@@ -300,14 +325,14 @@ func Reject(cur realm, erratumID int, note string) {
 	chain.Emit("ErratumRejected", "book", strconv.Itoa(report.BookID), "erratum", strconv.Itoa(erratumID))
 }
 
-// MarkDuplicate links a pending report to an earlier accepted report in the same book.
+// MarkDuplicate links a pending report to an earlier pending or accepted report in the same book.
 func MarkDuplicate(cur realm, erratumID, originalID int) {
 	caller := callerAddress(cur)
 	rejectCoins(cur)
 	record, report := requireReview(erratumID, caller)
 	original := reportByID(originalID)
 	if original == nil || original.BookID != report.BookID || original.ID >= report.ID ||
-		original.Status != Accepted {
+		(original.Status != Pending && original.Status != Accepted) {
 		panic(errDuplicate)
 	}
 	report.DuplicateOf = originalID
@@ -405,9 +430,12 @@ func AcceptedEntriesPage(bookID, offset, limit int) []errata.Entry {
 	return acceptedEntries(ListErrata(bookID, Accepted, offset, limit))
 }
 
-func FinderStats(addr address) (accepted int, paid int64) {
+func FinderStats(addr address) FinderSummary {
 	if finder, ok := finders.Get(addr.String()).(*finderRecord); ok {
-		return finder.ids.Size(), finder.paid
+		return FinderSummary{
+			Credits: finder.credits.Size(), UnpaidCredits: finder.unpaid.Size(),
+			Paid: finder.paid, Owed: finder.owed,
+		}
 	}
-	return 0, 0
+	return FinderSummary{}
 }

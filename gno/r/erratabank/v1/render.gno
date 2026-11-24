@@ -3,6 +3,8 @@ package erratabank
 import (
 	"strconv"
 
+	"gno.land/p/nt/avl/v0"
+
 	"gno.land/p/g132vz03ycpaagtef4jmxjakstkppgyc5wn3r807/errata/v0"
 	"gno.land/p/nt/markdown/sanitize/v0"
 	"gno.land/p/nt/mux/v0"
@@ -20,6 +22,7 @@ func init() {
 	router.HandleFunc("book/{id}/all", renderAll)
 	router.HandleFunc("erratum/{id}", renderErratum)
 	router.HandleFunc("finder/{addr}", renderFinder)
+	router.HandleFunc("finder/{addr}/unpaid", renderUnpaidFinder)
 	router.SetNotFoundHandler(func(w *mux.ResponseWriter, _ *mux.Request) {
 		notFound(w, "Page")
 	})
@@ -207,36 +210,61 @@ func renderErratum(w *mux.ResponseWriter, req *mux.Request) {
 }
 
 func renderFinder(w *mux.ResponseWriter, req *mux.Request) {
+	renderFinderCredits(w, req, false)
+}
+
+func renderUnpaidFinder(w *mux.ResponseWriter, req *mux.Request) {
+	renderFinderCredits(w, req, true)
+}
+
+func renderFinderCredits(w *mux.ResponseWriter, req *mux.Request, unpaid bool) {
 	raw := req.GetVar("addr")
 	cleaned := sanitize.BechString(raw, "g")
 	if cleaned == "" || cleaned != raw || !address(cleaned).IsValid() {
 		notFound(w, "Finder")
 		return
 	}
+	addr := address(cleaned)
+	stats := FinderStats(addr)
 	finder, _ := finders.Get(cleaned).(*finderRecord)
-	count, paid := FinderStats(address(cleaned))
+	route := "finder/" + cleaned
+	count := stats.Credits
+	var tree *avl.Tree
+	if finder != nil {
+		tree = &finder.credits
+	}
+	if unpaid {
+		route += "/unpaid"
+		count = stats.UnpaidCredits
+		if finder != nil {
+			tree = &finder.unpaid
+		}
+	}
 	offset, ok := pageOffset(req, count)
 	if !ok {
 		notFound(w, "Page")
 		return
 	}
-	w.Write(ufmt.Sprintf("# Finder account\n\n%s\n\n- Accepted finds: %d\n- Total earned: %s\n\n",
-		sanitize.InlineCode(cleaned), count, errata.FormatUgnot(paid)))
-	if finder == nil {
-		w.Write("No accepted finds yet.\n")
+
+	w.Write(ufmt.Sprintf("# Finder account\n\n%s\n\n- Reward-eligible credits: %d\n- Unpaid credits: %d\n- Paid: %s\n- Owed: %s\n\n",
+		sanitize.InlineCode(cleaned), stats.Credits, stats.UnpaidCredits,
+		errata.FormatUgnot(stats.Paid), errata.FormatUgnot(stats.Owed)))
+	if unpaid {
+		w.Write("[Reward-eligible credits](" + finderURL(addr) + ")\n\n## Unpaid credits\n\n")
+	} else {
+		w.Write("[Unpaid credits](" + finderURL(addr) + "/unpaid)\n\n## Reward-eligible credits\n\n")
+	}
+	if count == 0 {
+		w.Write("No credits in this view yet.\n")
 		return
 	}
-	w.Write("| Book | Find | Height found | Paid |\n| --- | --- | ---: | ---: |\n")
-	makeFinderRows(w, listReports(&finder.ids, offset, pageSize))
-	pagination(w, "finder/"+cleaned, offset, count)
-}
-
-func makeFinderRows(w *mux.ResponseWriter, reports []Erratum) {
-	for _, report := range reports {
+	w.Write("| Book | Find | Height found | Paid | Owed |\n| --- | --- | ---: | ---: | ---: |\n")
+	for _, report := range listReports(tree, offset, pageSize) {
 		book, _ := GetBook(report.BookID)
-		w.Write(ufmt.Sprintf("| [%s](%s) | [%s](%s) | %d | %s |\n",
+		w.Write(ufmt.Sprintf("| [%s](%s) | [%s](%s) | %d | %s | %s |\n",
 			sanitize.TableCell(book.Title), bookURL(book.ID),
 			sanitize.TableCell(report.Location), erratumURL(report.ID), report.SubmittedAt,
-			errata.FormatUgnot(report.Paid)))
+			errata.FormatUgnot(report.Paid), errata.FormatUgnot(report.Owed)))
 	}
+	pagination(w, route, offset, count)
 }
