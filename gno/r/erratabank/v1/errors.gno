@@ -20,4 +20,5 @@ const (
 	errRefundUnavailable     = "sponsor refunds require a closed book with no unpaid rewards"
 	errNoSponsorFunds        = "no sponsor funds to refund"
 	errOverflow              = "amount exceeds accounting limit"
+	errIDLimit               = "identifier limit reached"
 )

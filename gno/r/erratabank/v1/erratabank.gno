@@ -21,8 +21,9 @@ const (
 	Rejected  = "Rejected"
 	Duplicate = "Duplicate"
 
-	maxAmount  = 1<<63 - 1
-	idKeyWidth = 19
+	maxAmount    = 1<<63 - 1
+	idKeyWidth   = 19
+	maxListLimit = 50
 )
 
 type Book struct {
@@ -99,11 +100,12 @@ type FinderSummary struct {
 }
 
 var (
-	books         = avl.NewTree()
-	errataByID    = avl.NewTree()
-	finders       = avl.NewTree()
-	nextErratumID int
-	realmURL      string
+	books        = avl.NewTree()
+	errataByID   = avl.NewTree()
+	finders      = avl.NewTree()
+	nextBookID   int
+	nextReportID int
+	realmURL     string
 )
 
 func init(cur realm) {
@@ -113,6 +115,14 @@ func init(cur realm) {
 func idKey(id int) string {
 	digits := strconv.Itoa(id)
 	return strings.Repeat("0", idKeyWidth-len(digits)) + digits
+}
+
+func advanceID(counter *int) int {
+	if *counter == maxAmount {
+		panic(errIDLimit)
+	}
+	*counter += 1
+	return *counter
 }
 
 func bookByID(id int) *bookRecord {
@@ -165,7 +175,9 @@ func callerAddress(cur realm) address {
 	return cur.Previous().Address()
 }
 
-// A direct MsgCall credits this realm with the transaction's send before execution.
+// Gno v1.8.0 exposes the inbound coin envelope through unsafe.OriginSend.
+// The Gno Security Guide requires IsUserCall before reading it.
+// https://docs.gno.land/resources/gno-security-guide/#55-isuser-for-payment-guards
 func inboundUgnot(cur realm) int64 {
 	if !cur.Previous().IsUserCall() {
 		panic(errDirectCall)
@@ -229,7 +241,7 @@ func CreateBook(cur realm, title, edition, link string, rewardPerErratum int64) 
 	if rewardPerErratum < 0 {
 		panic("reward cannot be negative")
 	}
-	id := books.Size() + 1
+	id := advanceID(&nextBookID)
 	books.Set(idKey(id), &bookRecord{book: Book{
 		ID: id, Owner: owner, Title: title, Edition: edition, Link: link,
 		RewardPerErratum: rewardPerErratum, OwnerFunds: ownerFunds, Open: true, CreatedAt: runtime.ChainHeight(),
@@ -249,8 +261,7 @@ func Submit(cur realm, bookID int, location, text string) int {
 	}
 	location = requiredText("location", location, 120)
 	text = requiredText("text", text, 1000)
-	nextErratumID++
-	id := nextErratumID
+	id := advanceID(&nextReportID)
 	key := idKey(id)
 	errataByID.Set(key, &Erratum{
 		ID: id, BookID: bookID, Finder: finder, Location: location, Text: text,
@@ -364,13 +375,23 @@ func GetBook(id int) (Book, bool) {
 	return Book{}, false
 }
 
+func pageLimit(size, offset, limit int) int {
+	if offset < 0 || limit <= 0 || offset >= size {
+		return 0
+	}
+	if limit > maxListLimit {
+		limit = maxListLimit
+	}
+	if remaining := size - offset; limit > remaining {
+		limit = remaining
+	}
+	return limit
+}
+
 func ListBooks(offset, limit int) []Book {
 	var result []Book
-	if offset < 0 || limit <= 0 || offset >= books.Size() {
+	if limit = pageLimit(books.Size(), offset, limit); limit == 0 {
 		return result
-	}
-	if remaining := books.Size() - offset; limit > remaining {
-		limit = remaining
 	}
 	books.IterateByOffset(offset, limit, func(_ string, value any) bool {
 		result = append(result, value.(*bookRecord).book)
@@ -388,11 +409,11 @@ func GetErratum(id int) (Erratum, bool) {
 
 func listReports(tree *avl.Tree, offset, limit int) []Erratum {
 	var result []Erratum
-	if tree == nil || offset < 0 || limit <= 0 || offset >= tree.Size() {
+	if tree == nil {
 		return result
 	}
-	if remaining := tree.Size() - offset; limit > remaining {
-		limit = remaining
+	if limit = pageLimit(tree.Size(), offset, limit); limit == 0 {
+		return result
 	}
 	tree.IterateByOffset(offset, limit, func(_ string, value any) bool {
 		report, _ := GetErratum(value.(int))
@@ -421,11 +442,13 @@ func acceptedEntries(reports []Erratum) []errata.Entry {
 	return entries
 }
 
+// AcceptedEntries returns the first 50 accepted reports in submission order.
 func AcceptedEntries(bookID int) []errata.Entry {
-	return AcceptedEntriesPage(bookID, 0, int(maxAmount))
+	return AcceptedEntriesPage(bookID, 0, maxListLimit)
 }
 
-// AcceptedEntriesPage supports integrations that render a bounded page.
+// AcceptedEntriesPage is the integration API for rendering accepted reports.
+// Limits are capped at 50 entries per page.
 func AcceptedEntriesPage(bookID, offset, limit int) []errata.Entry {
 	return acceptedEntries(ListErrata(bookID, Accepted, offset, limit))
 }

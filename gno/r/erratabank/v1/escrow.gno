@@ -43,8 +43,8 @@ func (record *bookRecord) queueReward(report *Erratum, finder *finderRecord, rew
 	record.book.Owed = addAmount(record.book.Owed, reward)
 	finder.owed = addAmount(finder.owed, reward)
 	report.Owed = reward
-	record.nextOwedID++
-	record.owedReports.Set(idKey(record.nextOwedID), report.ID)
+	sequence := advanceID(&record.nextOwedID)
+	record.owedReports.Set(idKey(sequence), report.ID)
 }
 
 // Consume sponsor balances in address order before touching owner deposits.
