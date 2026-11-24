@@ -1,1 +1,7 @@
-use = ["./gno/p/errata", "./gno/r/erratabank", "./gno/r/erratademo"]
+use = [
+  "./gno/p/errata",
+  "./gno/r/erratabank",
+  "./gno/r/erratabank/v1",
+  "./gno/r/erratademo",
+  "./gno/r/erratademo/v1",
+]
