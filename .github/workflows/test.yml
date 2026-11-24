@@ -1,0 +1,27 @@
+name: Gno tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Gno v1.8.0
+        shell: bash
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/gnolang/gno/v1.8.0/misc/install.sh |
+            sh -s -- --version v1.8.0 --dir "$RUNNER_TEMP/gno-bin"
+          curl -fsSL https://github.com/gnolang/gno/archive/refs/tags/v1.8.0.tar.gz |
+            tar -xz -C "$RUNNER_TEMP"
+          printf '%s\n' "$RUNNER_TEMP/gno-bin" >> "$GITHUB_PATH"
+          printf 'GNOROOT=%s/gno-1.8.0\nGNOHOME=%s/gno-home\n' "$RUNNER_TEMP" "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Check format, lint, and tests
+        run: scripts/test.sh
