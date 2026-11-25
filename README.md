@@ -8,7 +8,7 @@ Erratabank was started on 23 Nov 2026 for the Gnome Tavern hackathon. Nothing ex
 
 ## Onyx deployment
 
-The links and recorded transactions below describe the live v0 deployment. The v1 realms are prepared locally.
+Erratabank v1 and Quickstart v1 are live on Onyx. The table and recorded transactions below preserve the v0 deployment history.
 
 | Component | Onyx |
 | --- | --- |
@@ -129,7 +129,7 @@ The `-home ''` flag skips the local keybase. The example account belongs only to
    Write each 24-word mnemonic down offline. **Never share your mnemonic.** Keep mnemonics, passwords, private keys, and keybase files out of Codex, chat, and project files.
 3. Run `gnokey list` to find the public `g1…` addresses for the four roles. If sharing setup information with Codex, provide only the public owner address.
 4. Fund the four public addresses. Select the current testnet and confirm it is Onyx. [Testnet faucet](https://faucet.gno.land)
-5. Confirm a positive Onyx balance for each address. Substitute each role's public address in the query.
+5. Confirm each role’s balance covers transaction fees and storage deposits. The sponsor also needs 2.1 GNOT for its two deposits, and the owner needs 0.25 GNOT for the book deposit.
 
    ```bash
    addr='PUBLIC_G1_ADDRESS'
@@ -153,7 +153,7 @@ Once signing is authorized, run `scripts/deploy-onyx.sh --simulate-only` to size
 
 Once broadcast is authorized, run `scripts/deploy-onyx.sh` in your Terminal. It checks the owner address and balance, skips live packages, and stops on a pending submission. Open the printed GPAS link and type `submit` only if the package has no pending submission. The script simulates the next package, pauses before broadcast, and exits after broadcasting that one package. Rerun it after the bank is live to submit the demo. Use `MAX_DEPLOY_DEPOSIT` or `MAX_CALL_DEPOSIT` if simulation calls for a higher storage cap. [Package approval status](https://gpas.latest.testnets.gno.land), [Onyx CLA](https://onyx.testnets.gno.land/r/sys/cla), [Storage deposits](https://docs.gno.land/resources/storage-deposit)
 
-After both v1 realms are live and demo broadcasts are authorized, run the demo. Replace the example ID below with the book ID printed by the script.
+Run `scripts/demo-onyx.sh` only after both v1 realms are live and the guide is unlinked. The live Onyx guide is already linked to book #1, so use `scripts/query-onyx.sh 1` to inspect the completed run. On a fresh deployment, replace the example ID below with the book ID printed by the script.
 
 ```bash
 scripts/demo-onyx.sh
